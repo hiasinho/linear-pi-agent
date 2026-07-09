@@ -12,7 +12,7 @@
     "smoke:webhook": "tsx src/webhook-smoke.ts"
   },
   "dependencies": {
-    "@earendil-works/pi-coding-agent": "^0.74.0",
+    "@earendil-works/pi-coding-agent": "^0.79.0",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "zod": "^3.24.1"
