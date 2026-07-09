@@ -104,6 +104,7 @@ PI_THEME=light
 PI_SESSION_DIR=./data/pi-sessions
 PI_PROGRESS_DEBOUNCE_MS=3000
 PI_PROGRESS_HEARTBEAT_MS=300000
+PI_PROGRESS_LONG_TOOL_MS=30000
 PI_TIMEOUT_MS=1800000
 
 HOST=127.0.0.1
@@ -123,6 +124,7 @@ Important values:
 - `PI_SESSION_DIR` — persisted pi SDK session state
 - `PI_PROGRESS_DEBOUNCE_MS` — minimum delay between Linear progress activities
 - `PI_PROGRESS_HEARTBEAT_MS` — quiet interval before posting a "still working" progress heartbeat
+- `PI_PROGRESS_LONG_TOOL_MS` — minimum successful tool duration before posting completion progress; `0` disables completion updates
 - `TOKEN_STORE_PATH` / `STATE_STORE_PATH` — persisted Linear OAuth state
 
 Use absolute paths for token, state, and session storage in production.

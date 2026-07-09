@@ -28,17 +28,19 @@ console.log(JSON.stringify({ config, publicConfig: publicConfig() }));`,
       PI_WORKDIR: "/tmp",
       PI_PROGRESS_DEBOUNCE_MS: "1234",
       PI_PROGRESS_HEARTBEAT_MS: "5678",
+      PI_PROGRESS_LONG_TOOL_MS: "3456",
       PI_TIMEOUT_MS: "9012",
       ...env,
     },
   });
 
   return JSON.parse(stdout) as {
-    config: { PI_THEME: string };
+    config: { PI_THEME: string; PI_PROGRESS_LONG_TOOL_MS: number };
     publicConfig: {
       piTheme: string;
       piProgressDebounceMs: number;
       piProgressHeartbeatMs: number;
+      piProgressLongToolMs: number;
       piTimeoutMs: number;
     };
   };
@@ -68,5 +70,20 @@ test("publicConfig includes safe Pi runtime settings", async () => {
   assert.equal(result.publicConfig.piTheme, "custom-theme");
   assert.equal(result.publicConfig.piProgressDebounceMs, 1234);
   assert.equal(result.publicConfig.piProgressHeartbeatMs, 5678);
+  assert.equal(result.publicConfig.piProgressLongToolMs, 3456);
   assert.equal(result.publicConfig.piTimeoutMs, 9012);
+});
+
+test("PI_PROGRESS_LONG_TOOL_MS defaults to 30000", async () => {
+  const result = await loadConfig({ PI_PROGRESS_LONG_TOOL_MS: undefined });
+
+  assert.equal(result.config.PI_PROGRESS_LONG_TOOL_MS, 30_000);
+});
+
+test("PI_PROGRESS_LONG_TOOL_MS accepts custom values and zero", async () => {
+  const custom = await loadConfig({ PI_PROGRESS_LONG_TOOL_MS: "45000" });
+  const disabled = await loadConfig({ PI_PROGRESS_LONG_TOOL_MS: "0" });
+
+  assert.equal(custom.config.PI_PROGRESS_LONG_TOOL_MS, 45_000);
+  assert.equal(disabled.config.PI_PROGRESS_LONG_TOOL_MS, 0);
 });

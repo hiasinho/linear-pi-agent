@@ -1,8 +1,11 @@
+import { performance } from "node:perf_hooks";
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import { config } from "./config.js";
 import { createAgentActivity, type AgentActivityContent } from "./linear.js";
 
 const MAX_PROGRESS_CHARS = 220;
+
+const SAFE_FALLBACK_FIELDS = ["path", "file_path", "filePath", "query", "pattern", "glob", "url", "name", "title"];
 
 type ProgressUpdate = {
   type: "thought" | "action";
@@ -12,15 +15,21 @@ type ProgressUpdate = {
   dedupeKey?: string;
 };
 
+type ToolRun = {
+  toolName: string;
+  display: string;
+  startedAtMs: number;
+};
+
 type ProgressReporterOptions = {
   agentSessionId: string;
   debounceMs?: number;
   heartbeatMs?: number;
+  longToolMs?: number;
+  nowMs?: () => number;
   send?: (agentSessionId: string, content: AgentActivityContent) => Promise<unknown>;
   logger?: Pick<typeof console, "error">;
 };
-
-const SAFE_FALLBACK_FIELDS = ["path", "file_path", "filePath", "query", "pattern", "glob", "url", "name", "title"];
 
 function isSensitiveName(name: string): boolean {
   const normalized = name.replace(/[-_]/g, "").toLowerCase();
@@ -133,10 +142,31 @@ function summarizeToolTarget(toolName: string, args: unknown): string | undefine
   return undefined;
 }
 
-export function toolProgressText(toolName: string, args: unknown): string {
+export function toolDisplayText(toolName: string, args: unknown): string {
   const safeToolName = truncate(toolName, 80);
   const detail = summarizeToolTarget(toolName, args);
-  return truncate(detail ? `Running ${safeToolName}: ${detail}` : `Running ${safeToolName}`);
+  return truncate(detail ? `${safeToolName}: ${detail}` : safeToolName);
+}
+
+export function toolProgressText(toolName: string, args: unknown): string {
+  return truncate(`Running ${toolDisplayText(toolName, args)}`);
+}
+
+export function formatElapsed(ms: number): string {
+  const seconds = Math.max(1, Math.round(ms / 1000));
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  if (!minutes) return `${seconds}s`;
+  if (!remainingSeconds) return `${minutes}m`;
+  return `${minutes}m ${remainingSeconds}s`;
+}
+
+export function toolCompletionText(display: string, elapsedMs: number): string {
+  const suffix = ` after ${formatElapsed(elapsedMs)}.`;
+  const prefix = "Finished ";
+  const maxDisplayChars = MAX_PROGRESS_CHARS - prefix.length - suffix.length;
+  const safeDisplay = truncate(display, Math.max(1, maxDisplayChars));
+  return truncate(`${prefix}${safeDisplay}${suffix}`);
 }
 
 export class ProgressReporter {
@@ -146,14 +176,19 @@ export class ProgressReporter {
   private heartbeatStartedAt = 0;
   private lastSentAt = 0;
   private lastSentKey?: string;
+  private toolRuns = new Map<string, ToolRun>();
   private readonly debounceMs: number;
   private readonly heartbeatMs: number;
+  private readonly longToolMs: number;
+  private readonly nowMs: () => number;
   private readonly send: (agentSessionId: string, content: AgentActivityContent) => Promise<unknown>;
   private readonly logger: Pick<typeof console, "error">;
 
   constructor(private readonly options: ProgressReporterOptions) {
     this.debounceMs = options.debounceMs ?? config.PI_PROGRESS_DEBOUNCE_MS;
     this.heartbeatMs = options.heartbeatMs ?? config.PI_PROGRESS_HEARTBEAT_MS;
+    this.longToolMs = options.longToolMs ?? config.PI_PROGRESS_LONG_TOOL_MS;
+    this.nowMs = options.nowMs ?? (() => performance.now());
     this.send = options.send ?? createAgentActivity;
     this.logger = options.logger ?? console;
   }
@@ -165,6 +200,40 @@ export class ProgressReporter {
   action(action: string, parameter: string): void {
     const body = parameter.trim() ? `${action}: ${parameter}` : action;
     this.queue({ type: "thought", body: truncate(body) });
+  }
+
+  toolStarted(toolCallId: string, toolName: string, args: unknown): void {
+    const display = toolDisplayText(toolName, args);
+    this.toolRuns.set(toolCallId, { toolName, display, startedAtMs: this.nowMs() });
+    this.queue({ type: "thought", body: `Running ${display}`, dedupeKey: `tool-start:${toolCallId}` });
+  }
+
+  toolEnded(toolCallId: string, toolName: string, isError: boolean): void {
+    const run = this.toolRuns.get(toolCallId);
+    this.toolRuns.delete(toolCallId);
+
+    if (isError) {
+      this.queue({
+        type: "thought",
+        body: `${toolName} reported an error; Pi is adjusting.`,
+        dedupeKey: `tool-error:${toolCallId}`,
+      });
+      return;
+    }
+
+    if (!run || this.longToolMs === 0) return;
+    const elapsedMs = this.nowMs() - run.startedAtMs;
+    if (elapsedMs < this.longToolMs) return;
+
+    this.queue({
+      type: "thought",
+      body: toolCompletionText(run.display, elapsedMs),
+      dedupeKey: `tool-complete:${toolCallId}`,
+    });
+  }
+
+  clearToolRuns(): void {
+    this.toolRuns.clear();
   }
 
   startHeartbeat(): void {
@@ -246,10 +315,12 @@ export function handleSdkEvent(event: AgentSessionEvent, reporter: ProgressRepor
     case "turn_start":
       break;
     case "tool_execution_start":
-      reporter.thought(toolProgressText(event.toolName, event.args));
+      reporter.toolStarted(event.toolCallId, event.toolName, event.args);
+      break;
+    case "tool_execution_update":
       break;
     case "tool_execution_end":
-      if (event.isError) reporter.thought(`${event.toolName} reported an error; Pi is adjusting.`);
+      reporter.toolEnded(event.toolCallId, event.toolName, event.isError);
       break;
     case "message_end":
       break;

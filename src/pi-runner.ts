@@ -230,6 +230,7 @@ export async function runPi(payload: AgentSessionWebhook): Promise<PiRunResult> 
     result.summary = summarizePiResult(result);
     return result;
   } finally {
+    reporter.clearToolRuns();
     reporter.stopHeartbeat();
     if (timeout) clearTimeout(timeout);
     captureFinal();

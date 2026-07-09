@@ -13,6 +13,7 @@ Changes since `v0.1.0`.
 - Configurable Pi progress heartbeats through `PI_PROGRESS_HEARTBEAT_MS`.
 - Unit tests for progress deduplication, event mapping, sanitization, and heartbeat behavior.
 - Config tests for Pi theme defaults, custom theme names, and safe public runtime config.
+- Report completion progress for successful long-running tools using toolCallId-based tracking.
 
 ### Changed
 

@@ -14,6 +14,7 @@ before(() => {
 afterEach(() => {
   delete process.env.PI_PROGRESS_DEBOUNCE_MS;
   delete process.env.PI_PROGRESS_HEARTBEAT_MS;
+  delete process.env.PI_PROGRESS_LONG_TOOL_MS;
 });
 
 function sleep(ms: number): Promise<void> {
@@ -161,15 +162,178 @@ test("toolProgressText truncates long commands", async () => {
   assert.equal(text.endsWith("…"), true);
 });
 
+test("formatElapsed returns compact elapsed time", async () => {
+  const { formatElapsed } = await progressModule();
+
+  assert.equal(formatElapsed(500), "1s");
+  assert.equal(formatElapsed(30_000), "30s");
+  assert.equal(formatElapsed(60_000), "1m");
+  assert.equal(formatElapsed(74_000), "1m 14s");
+});
+
+test("fast successful tools do not report completion", async () => {
+  const { ProgressReporter } = await progressModule();
+  const { sent, send } = sentCollector();
+  let now = 1_000;
+  const reporter = new ProgressReporter({ agentSessionId: "session", debounceMs: 1, longToolMs: 30_000, nowMs: () => now, send });
+
+  reporter.toolStarted("call-1", "bash", { command: "npm test" });
+  await reporter.flush();
+  now += 29_000;
+  reporter.toolEnded("call-1", "bash", false);
+  await reporter.flush();
+
+  assert.deepEqual(sent, [{ type: "thought", body: "Running bash: npm test" }]);
+});
+
+test("slow successful tools report completion at and above threshold", async () => {
+  const { ProgressReporter } = await progressModule();
+  const { sent, send } = sentCollector();
+  let now = 0;
+  const reporter = new ProgressReporter({ agentSessionId: "session", debounceMs: 1, longToolMs: 30_000, nowMs: () => now, send });
+
+  reporter.toolStarted("call-1", "bash", { command: "npm test" });
+  await reporter.flush();
+  now = 30_000;
+  reporter.toolEnded("call-1", "bash", false);
+  await reporter.flush();
+  reporter.toolStarted("call-2", "bash", { command: "npm run build" });
+  await reporter.flush();
+  now = 104_000;
+  reporter.toolEnded("call-2", "bash", false);
+  await reporter.flush();
+
+  assert.deepEqual(sent, [
+    { type: "thought", body: "Running bash: npm test" },
+    { type: "thought", body: "Finished bash: npm test after 30s." },
+    { type: "thought", body: "Running bash: npm run build" },
+    { type: "thought", body: "Finished bash: npm run build after 1m 14s." },
+  ]);
+});
+
+test("long tool completion can be disabled", async () => {
+  const { ProgressReporter } = await progressModule();
+  const { sent, send } = sentCollector();
+  let now = 0;
+  const reporter = new ProgressReporter({ agentSessionId: "session", debounceMs: 1, longToolMs: 0, nowMs: () => now, send });
+
+  reporter.toolStarted("call-1", "bash", { command: "npm test" });
+  await reporter.flush();
+  now = 60_000;
+  reporter.toolEnded("call-1", "bash", false);
+  await reporter.flush();
+
+  assert.deepEqual(sent, [{ type: "thought", body: "Running bash: npm test" }]);
+});
+
+test("failed tools still report an adjustment message", async () => {
+  const { ProgressReporter } = await progressModule();
+  const { sent, send } = sentCollector();
+  const reporter = new ProgressReporter({ agentSessionId: "session", debounceMs: 1, longToolMs: 30_000, send });
+
+  reporter.toolStarted("call-1", "bash", { command: "npm test" });
+  await reporter.flush();
+  reporter.toolEnded("call-1", "bash", true);
+  await reporter.flush();
+
+  assert.deepEqual(sent, [
+    { type: "thought", body: "Running bash: npm test" },
+    { type: "thought", body: "bash reported an error; Pi is adjusting." },
+  ]);
+});
+
+test("parallel same-name tools are tracked by toolCallId", async () => {
+  const { ProgressReporter } = await progressModule();
+  const { sent, send } = sentCollector();
+  let now = 0;
+  const reporter = new ProgressReporter({ agentSessionId: "session", debounceMs: 1, longToolMs: 30_000, nowMs: () => now, send });
+
+  reporter.toolStarted("call-1", "bash", { command: "npm test" });
+  await reporter.flush();
+  reporter.toolStarted("call-2", "bash", { command: "npm run build" });
+  await reporter.flush();
+  now = 31_000;
+  reporter.toolEnded("call-2", "bash", false);
+  await reporter.flush();
+  now = 62_000;
+  reporter.toolEnded("call-1", "bash", false);
+  await reporter.flush();
+
+  assert.deepEqual(sent, [
+    { type: "thought", body: "Running bash: npm test" },
+    { type: "thought", body: "Running bash: npm run build" },
+    { type: "thought", body: "Finished bash: npm run build after 31s." },
+    { type: "thought", body: "Finished bash: npm test after 1m 2s." },
+  ]);
+});
+
+test("missing or cleared tool runs do not report successful completion", async () => {
+  const { ProgressReporter } = await progressModule();
+  const { sent, send } = sentCollector();
+  let now = 0;
+  const reporter = new ProgressReporter({ agentSessionId: "session", debounceMs: 1, longToolMs: 30_000, nowMs: () => now, send });
+
+  reporter.toolEnded("missing", "bash", false);
+  reporter.toolStarted("call-1", "bash", { command: "npm test" });
+  await reporter.flush();
+  reporter.clearToolRuns();
+  now = 60_000;
+  reporter.toolEnded("call-1", "bash", false);
+  await reporter.flush();
+
+  assert.deepEqual(sent, [{ type: "thought", body: "Running bash: npm test" }]);
+});
+
+test("completion uses redacted truncated start display and ignores result", async () => {
+  const { ProgressReporter } = await progressModule();
+  const { sent, send } = sentCollector();
+  let now = 0;
+  const reporter = new ProgressReporter({ agentSessionId: "session", debounceMs: 1, longToolMs: 30_000, nowMs: () => now, send });
+
+  reporter.toolStarted("call-1", "bash", { command: `echo TOKEN=abc ${"x".repeat(500)}` });
+  await reporter.flush();
+  now = 30_000;
+  reporter.toolEnded("call-1", "bash", false);
+  await reporter.flush();
+
+  const completion = sent[1]?.type === "thought" ? sent[1].body : "";
+  assert.match(completion, /^Finished bash: echo TOKEN=\[redacted\]/);
+  assert.match(completion, / after 30s\.$/);
+  assert.equal(completion.includes("abc"), false);
+  assert.equal(completion.includes("result"), false);
+  assert.equal(completion.length <= 220, true);
+});
+
 test("tool_execution_start reports sanitized useful progress", async () => {
   const { ProgressReporter, handleSdkEvent } = await progressModule();
   const { sent, send } = sentCollector();
   const reporter = new ProgressReporter({ agentSessionId: "session", debounceMs: 1, send });
 
-  handleSdkEvent({ type: "tool_execution_start", toolName: "bash", args: { command: "echo TOKEN=abc123" } } as never, reporter);
+  handleSdkEvent({ type: "tool_execution_start", toolCallId: "call-1", toolName: "bash", args: { command: "echo TOKEN=abc123" } } as never, reporter);
   await reporter.flush();
 
   assert.deepEqual(sent, [{ type: "thought", body: "Running bash: echo TOKEN=[redacted]" }]);
+});
+
+test("tool_execution_end reports slow completion and tool_execution_update is a no-op", async () => {
+  const { ProgressReporter, handleSdkEvent } = await progressModule();
+  const { sent, send } = sentCollector();
+  let now = 0;
+  const reporter = new ProgressReporter({ agentSessionId: "session", debounceMs: 1, longToolMs: 30_000, nowMs: () => now, send });
+
+  handleSdkEvent({ type: "tool_execution_start", toolCallId: "call-1", toolName: "bash", args: { command: "npm test" } } as never, reporter);
+  await reporter.flush();
+  handleSdkEvent({ type: "tool_execution_update", toolCallId: "call-1", toolName: "bash", args: {}, partialResult: "secret result" } as never, reporter);
+  await reporter.flush();
+  now = 31_000;
+  handleSdkEvent({ type: "tool_execution_end", toolCallId: "call-1", toolName: "bash", result: "secret result", isError: false } as never, reporter);
+  handleSdkEvent({ type: "message_end" } as never, reporter);
+  await reporter.flush();
+
+  assert.deepEqual(sent, [
+    { type: "thought", body: "Running bash: npm test" },
+    { type: "thought", body: "Finished bash: npm test after 31s." },
+  ]);
 });
 
 test("action redacts and truncates progress", async () => {
