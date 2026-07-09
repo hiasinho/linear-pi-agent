@@ -8,6 +8,7 @@
     "start": "node dist/server.js",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/**/*.test.ts",
     "smoke:linear": "tsx src/linear-smoke.ts",
     "smoke:webhook": "tsx src/webhook-smoke.ts"
   },

@@ -26,6 +26,7 @@ The service:
 - supports follow-up prompts on active sessions
 - handles stop/cancel requests by aborting the pi session
 - redacts obvious secret-looking values from progress updates
+- deduplicates repeated progress updates and sends a configurable heartbeat during quiet long-running sessions
 
 ## Linear setup
 
@@ -101,6 +102,7 @@ PI_MODE=json
 PI_RUNNER=sdk
 PI_SESSION_DIR=./data/pi-sessions
 PI_PROGRESS_DEBOUNCE_MS=3000
+PI_PROGRESS_HEARTBEAT_MS=300000
 PI_TIMEOUT_MS=1800000
 
 HOST=127.0.0.1
@@ -117,6 +119,8 @@ Important values:
 - `INSTALL_SECRET` — random secret for `/linear/install`; use at least 16 characters
 - `PI_WORKDIR` — the repository pi should work in
 - `PI_SESSION_DIR` — persisted pi SDK session state
+- `PI_PROGRESS_DEBOUNCE_MS` — minimum delay between Linear progress activities
+- `PI_PROGRESS_HEARTBEAT_MS` — quiet interval before posting a "still working" progress heartbeat
 - `TOKEN_STORE_PATH` / `STATE_STORE_PATH` — persisted Linear OAuth state
 
 Use absolute paths for token, state, and session storage in production.

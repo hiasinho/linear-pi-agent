@@ -1,5 +1,6 @@
 node_modules/
 dist/
+.pi-subagents/
 .env
 data/*.json
 data/pi-sessions/

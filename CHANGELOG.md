@@ -10,6 +10,8 @@ Changes since `v0.1.0`.
 - A start activity when the service receives a Linear agent session and begins work.
 - `POSSIBLE_IMPROVEMENTS.md` with prioritized follow-up ideas for progress reporting and operational polish.
 - Recommended hosting guidance and a short roadmap in the README.
+- Configurable Pi progress heartbeats through `PI_PROGRESS_HEARTBEAT_MS`.
+- Unit tests for progress deduplication, event mapping, sanitization, and heartbeat behavior.
 
 ### Changed
 
@@ -17,6 +19,7 @@ Changes since `v0.1.0`.
 - Improve tool argument summaries by recognizing `cmd` as well as `command`.
 - Upgrade `@earendil-works/pi-coding-agent` to `^0.80.3` and add `undici`.
 - Upgrade dependency ranges for `express` to `^4.22.2` and `tsx` to `^4.23.0`.
+- Deduplicate pending and already-sent Linear progress updates, stop generic `turn_start` progress spam, sanitize tool progress, and flush pending progress before Pi error or timeout results.
 
 ### Security
 
