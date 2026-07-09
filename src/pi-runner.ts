@@ -15,7 +15,7 @@ const MAX_LINEAR_BODY_CHARS = 8_000;
 // Some installed pi extensions render background widgets even when pi is used
 // through the SDK. Initialize the global theme so those non-interactive hooks
 // do not crash the Linear service with "Theme not initialized".
-initTheme(process.env.PI_THEME ?? "light", false);
+initTheme(config.PI_THEME, false);
 
 export type PiRunResult = {
   exitCode: number | null;

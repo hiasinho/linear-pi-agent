@@ -12,6 +12,7 @@ Changes since `v0.1.0`.
 - Recommended hosting guidance and a short roadmap in the README.
 - Configurable Pi progress heartbeats through `PI_PROGRESS_HEARTBEAT_MS`.
 - Unit tests for progress deduplication, event mapping, sanitization, and heartbeat behavior.
+- Config tests for Pi theme defaults, custom theme names, and safe public runtime config.
 
 ### Changed
 
@@ -20,6 +21,7 @@ Changes since `v0.1.0`.
 - Upgrade `@earendil-works/pi-coding-agent` to `^0.80.3` and add `undici`.
 - Upgrade dependency ranges for `express` to `^4.22.2` and `tsx` to `^4.23.0`.
 - Deduplicate pending and already-sent Linear progress updates, stop generic `turn_start` progress spam, sanitize tool progress, and flush pending progress before Pi error or timeout results.
+- Centralize Pi theme configuration through validated `PI_THEME`.
 
 ### Security
 

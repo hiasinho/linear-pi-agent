@@ -100,6 +100,7 @@ PI_WORKDIR=/path/to/your/app
 PI_COMMAND=pi
 PI_MODE=json
 PI_RUNNER=sdk
+PI_THEME=light
 PI_SESSION_DIR=./data/pi-sessions
 PI_PROGRESS_DEBOUNCE_MS=3000
 PI_PROGRESS_HEARTBEAT_MS=300000
@@ -118,6 +119,7 @@ Important values:
 - `LINEAR_WEBHOOK_SECRET` — Linear webhook signing secret
 - `INSTALL_SECRET` — random secret for `/linear/install`; use at least 16 characters
 - `PI_WORKDIR` — the repository pi should work in
+- `PI_THEME` — Pi theme name for SDK runs; defaults to `light`, and custom theme names are allowed
 - `PI_SESSION_DIR` — persisted pi SDK session state
 - `PI_PROGRESS_DEBOUNCE_MS` — minimum delay between Linear progress activities
 - `PI_PROGRESS_HEARTBEAT_MS` — quiet interval before posting a "still working" progress heartbeat
