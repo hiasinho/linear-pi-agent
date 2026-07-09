@@ -165,10 +165,16 @@ test("toolProgressText truncates long commands", async () => {
 test("formatElapsed returns compact elapsed time", async () => {
   const { formatElapsed } = await progressModule();
 
+  assert.equal(formatElapsed(-1_000), "0s");
+  assert.equal(formatElapsed(0), "0s");
   assert.equal(formatElapsed(500), "1s");
+  assert.equal(formatElapsed(999), "1s");
   assert.equal(formatElapsed(30_000), "30s");
   assert.equal(formatElapsed(60_000), "1m");
+  assert.equal(formatElapsed(61_000), "1m 1s");
   assert.equal(formatElapsed(74_000), "1m 14s");
+  assert.equal(formatElapsed(1_800_000), "30m");
+  assert.equal(formatElapsed(3_660_000), "1h 1m");
 });
 
 test("fast successful tools do not report completion", async () => {

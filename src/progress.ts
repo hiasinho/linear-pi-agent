@@ -153,12 +153,18 @@ export function toolProgressText(toolName: string, args: unknown): string {
 }
 
 export function formatElapsed(ms: number): string {
-  const seconds = Math.max(1, Math.round(ms / 1000));
+  const seconds = Math.max(0, Math.round(ms / 1000));
+  if (seconds < 60) return `${seconds}s`;
+
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = seconds % 60;
-  if (!minutes) return `${seconds}s`;
-  if (!remainingSeconds) return `${minutes}m`;
-  return `${minutes}m ${remainingSeconds}s`;
+  if (minutes < 60) {
+    return remainingSeconds === 0 ? `${minutes}m` : `${minutes}m ${remainingSeconds}s`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  return remainingMinutes === 0 ? `${hours}h` : `${hours}h ${remainingMinutes}m`;
 }
 
 export function toolCompletionText(display: string, elapsedMs: number): string {

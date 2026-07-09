@@ -1,5 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
+import { performance } from "node:perf_hooks";
 import {
   createAgentSession,
   initTheme,
@@ -10,7 +11,7 @@ import { config } from "./config.js";
 import { handleSdkEvent, ProgressReporter, redact } from "./progress.js";
 import type { AgentSessionWebhook } from "./session-runner.js";
 
-const MAX_LINEAR_BODY_CHARS = 8_000;
+export const MAX_LINEAR_BODY_CHARS = 8_000;
 
 // Some installed pi extensions render background widgets even when pi is used
 // through the SDK. Initialize the global theme so those non-interactive hooks
@@ -25,6 +26,7 @@ export type PiRunResult = {
   stderr: string;
   outputText: string;
   summary: string;
+  elapsedMs: number;
 };
 
 type ManagedSession = {
@@ -167,18 +169,22 @@ export async function runPi(payload: AgentSessionWebhook): Promise<PiRunResult> 
   if (!agentSessionId) throw new Error("agentSession.id is required to run pi");
 
   const prompt = payload.action === "prompted" ? buildPiFollowUpPrompt(payload) : buildPiPrompt(payload);
+  const startedAt = performance.now();
+  const elapsedMs = () => Math.max(0, Math.round(performance.now() - startedAt));
   const reporter = new ProgressReporter({ agentSessionId });
-  const managed = await getSdkSession(agentSessionId, reporter);
+  let managed: ManagedSession | undefined;
   let finalText = "";
-  const captureFinal = managed.session.subscribe((event) => {
-    if (event.type === "agent_end") finalText = finalAssistantText(event.messages) ?? finalText;
-    if (event.type === "turn_end") finalText = messageText(event.message).trim() || finalText;
-  });
-
+  let captureFinal: (() => void) | undefined;
   let timedOut = false;
   let timeout: NodeJS.Timeout | undefined;
 
   try {
+    managed = await getSdkSession(agentSessionId, reporter);
+    captureFinal = managed.session.subscribe((event) => {
+      if (event.type === "agent_end") finalText = finalAssistantText(event.messages) ?? finalText;
+      if (event.type === "turn_end") finalText = messageText(event.message).trim() || finalText;
+    });
+
     reporter.startHeartbeat();
     await Promise.race([
       managed.session.prompt(prompt),
@@ -200,13 +206,14 @@ export async function runPi(payload: AgentSessionWebhook): Promise<PiRunResult> 
       stderr: "",
       outputText: finalText,
       summary: "",
+      elapsedMs: elapsedMs(),
     };
     result.summary = summarizePiResult(result);
     return result;
   } catch (error) {
     await reporter.flush();
 
-    if (timedOut) {
+    if (timedOut && managed) {
       try {
         await managed.session.abort();
       } catch (abortError) {
@@ -226,6 +233,7 @@ export async function runPi(payload: AgentSessionWebhook): Promise<PiRunResult> 
       stderr: timedOut ? "" : message,
       outputText: finalText,
       summary: "",
+      elapsedMs: elapsedMs(),
     };
     result.summary = summarizePiResult(result);
     return result;
@@ -233,7 +241,7 @@ export async function runPi(payload: AgentSessionWebhook): Promise<PiRunResult> 
     reporter.clearToolRuns();
     reporter.stopHeartbeat();
     if (timeout) clearTimeout(timeout);
-    captureFinal();
+    captureFinal?.();
   }
 }
 
