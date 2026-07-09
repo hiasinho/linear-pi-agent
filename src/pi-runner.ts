@@ -82,7 +82,7 @@ function summarizeToolArgs(toolName: string, args: unknown): string {
   const record = args as Record<string, unknown>;
   const pathValue = record.path ?? record.file_path ?? record.filePath;
   if (typeof pathValue === "string") return `${toolName} ${pathValue}`;
-  const command = record.command;
+  const command = record.command ?? record.cmd;
   if (typeof command === "string") return `${toolName} ${command}`;
   const query = record.query;
   if (typeof query === "string") return `${toolName} ${query}`;
@@ -238,8 +238,16 @@ function disposeSdkSession(agentSessionId: string): void {
 function handleSdkEvent(event: AgentSessionEvent, reporter: ProgressReporter): void {
   switch (event.type) {
     case "agent_start":
+      reporter.thought("Pi is starting the coding session.");
+      break;
+    case "turn_start":
+      reporter.thought("Pi is thinking.");
       break;
     case "tool_execution_start":
+      reporter.action(`Running ${event.toolName}`, summarizeToolArgs(event.toolName, event.args));
+      break;
+    case "tool_execution_end":
+      if (event.isError) reporter.thought(`${event.toolName} reported an error; Pi is adjusting.`);
       break;
     case "message_end":
       // Do not mirror assistant messages as progress thoughts. Linear uses the
@@ -247,8 +255,10 @@ function handleSdkEvent(event: AgentSessionEvent, reporter: ProgressReporter): v
       // a thought after the response can move a completed session back to active.
       break;
     case "compaction_start":
+      reporter.thought("Pi is compacting context before continuing.");
       break;
     case "auto_retry_start":
+      reporter.thought(`Pi is retrying after an error (${event.attempt}/${event.maxAttempts}).`);
       break;
     case "queue_update":
       break;

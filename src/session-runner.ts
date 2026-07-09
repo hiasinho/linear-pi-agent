@@ -121,6 +121,13 @@ function startRun(agentSessionId: string, payload: AgentSessionWebhook, state: S
 
 async function runSession(agentSessionId: string, payload: AgentSessionWebhook, state: SessionState): Promise<void> {
   console.log("pi run started", { agentSessionId });
+  await createAgentActivity(agentSessionId, {
+    type: "thought",
+    body: `Pi received ${issueLabel(payload)} and started working.`,
+  }).catch((error: Error) => {
+    console.error("failed to create start activity", { agentSessionId, message: error.message });
+  });
+
   const result = await runPi(payload);
   console.log("pi run finished", { agentSessionId, exitCode: result.exitCode, timedOut: result.timedOut });
 
