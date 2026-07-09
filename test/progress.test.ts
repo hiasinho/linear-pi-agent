@@ -97,6 +97,70 @@ test("turn_start and message_end create no progress", async () => {
   assert.equal(sent.length, 0);
 });
 
+test("toolProgressText formats known tools safely", async () => {
+  const { toolProgressText } = await progressModule();
+
+  assert.equal(toolProgressText("bash", { command: "npm run typecheck" }), "Running bash: npm run typecheck");
+  assert.equal(toolProgressText("read", { path: "src/pi-runner.ts" }), "Running read: src/pi-runner.ts");
+  assert.equal(toolProgressText("write", { path: "README.md", content: "SECRET=abc" }), "Running write: README.md");
+  assert.equal(toolProgressText("edit", { path: "src/config.ts", oldText: "TOKEN=abc", newText: "TOKEN=def" }), "Running edit: src/config.ts");
+  assert.equal(toolProgressText("ls", {}), "Running ls: .");
+  assert.equal(toolProgressText("ls", { path: "src" }), "Running ls: src");
+  assert.equal(toolProgressText("grep", { pattern: "ProgressReporter", path: "src" }), "Running grep: ProgressReporter in src");
+  assert.equal(toolProgressText("rg", { query: "ProgressReporter", glob: "src/**/*.ts" }), "Running rg: ProgressReporter in src/**/*.ts");
+  assert.equal(toolProgressText("find", { pattern: "*.ts", path: "src" }), "Running find: *.ts in src");
+  assert.equal(toolProgressText("web_search", { query: "Linear agent progress API" }), "Running web_search: Linear agent progress API");
+  assert.equal(toolProgressText("web_search", { queries: ["Linear agent progress API"] }), "Running web_search: Linear agent progress API");
+  assert.equal(toolProgressText("fetch_content", { url: "https://linear.app/developers/agent-interaction" }), "Running fetch_content: https://linear.app/developers/agent-interaction");
+  assert.equal(toolProgressText("fetch_content", { urls: ["https://example.com/a?token=abc"] }), "Running fetch_content: https://example.com/a?token=redacted");
+});
+
+test("toolProgressText does not leak write or edit content", async () => {
+  const { toolProgressText } = await progressModule();
+
+  const writeText = toolProgressText("write", { path: "README.md", content: "private content" });
+  const editText = toolProgressText("edit", { path: "src/config.ts", edits: [{ oldText: "old secret", newText: "new secret" }] });
+
+  assert.equal(writeText, "Running write: README.md");
+  assert.equal(editText, "Running edit: src/config.ts");
+  assert.equal(writeText.includes("private content"), false);
+  assert.equal(editText.includes("old secret"), false);
+  assert.equal(editText.includes("new secret"), false);
+});
+
+test("toolProgressText handles unknown tools with safe allowlisted fields only", async () => {
+  const { toolProgressText } = await progressModule();
+
+  assert.equal(toolProgressText("custom_tool", { path: "src/file.ts" }), "Running custom_tool: src/file.ts");
+  assert.equal(toolProgressText("custom_tool", { token: "secret", content: "private" }), "Running custom_tool");
+});
+
+test("toolProgressText redacts tokens, auth headers, GitHub tokens, CLI flags, and URLs", async () => {
+  const { toolProgressText } = await progressModule();
+
+  const text = toolProgressText("bash", {
+    command: "curl -H 'Authorization: Bearer abcdefghijklmnop' --token ghp_123456789012345678901234567890123456 https://user:pass@example.com/path?access_token=abc&ok=1 OPENAI_API_KEY=sk-12345678901234567890 github_pat_1234567890abcdefghijklmnopqrstuvwxyz",
+  });
+
+  assert.match(text, /Authorization: Bearer \[redacted\]/);
+  assert.match(text, /--token \[redacted\]/);
+  assert.match(text, /OPENAI_API_KEY=\[redacted\]/);
+  assert.equal(text.includes("abcdefghijklmnop"), false);
+  assert.equal(text.includes("ghp_123456"), false);
+  assert.equal(text.includes("github_pat_123456"), false);
+  assert.equal(text.includes("user:pass"), false);
+  assert.equal(text.includes("access_token=abc"), false);
+});
+
+test("toolProgressText truncates long commands", async () => {
+  const { toolProgressText } = await progressModule();
+
+  const text = toolProgressText("bash", { command: "x".repeat(500) });
+
+  assert.equal(text.length, 220);
+  assert.equal(text.endsWith("…"), true);
+});
+
 test("tool_execution_start reports sanitized useful progress", async () => {
   const { ProgressReporter, handleSdkEvent } = await progressModule();
   const { sent, send } = sentCollector();
@@ -105,7 +169,7 @@ test("tool_execution_start reports sanitized useful progress", async () => {
   handleSdkEvent({ type: "tool_execution_start", toolName: "bash", args: { command: "echo TOKEN=abc123" } } as never, reporter);
   await reporter.flush();
 
-  assert.deepEqual(sent, [{ type: "thought", body: "Running bash: bash echo TOKEN=[redacted]" }]);
+  assert.deepEqual(sent, [{ type: "thought", body: "Running bash: echo TOKEN=[redacted]" }]);
 });
 
 test("action redacts and truncates progress", async () => {

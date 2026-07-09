@@ -22,6 +22,7 @@ Changes since `v0.1.0`.
 - Upgrade dependency ranges for `express` to `^4.22.2` and `tsx` to `^4.23.0`.
 - Deduplicate pending and already-sent Linear progress updates, stop generic `turn_start` progress spam, sanitize tool progress, and flush pending progress before Pi error or timeout results.
 - Centralize Pi theme configuration through validated `PI_THEME`.
+- Improve Linear tool progress summaries with tool-aware, redacted, truncation-safe formatting.
 
 ### Security
 
